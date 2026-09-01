@@ -1,11 +1,10 @@
 /**
- * Formattazione dei menù in messaggi Telegram (parse_mode: HTML), in una
- * delle lingue supportate.
+ * Formats menus into Telegram messages (parse_mode: HTML), in one of the
+ * supported languages.
  *
- * Le date e gli allergeni più comuni sono tradotti da tabelle locali
- * (deterministico e gratis, vedi `locale.ts`); i nomi dei piatti e i testi
- * liberi passano invece per l'API di traduzione, che qui arriva già risolta
- * in una `Translations`.
+ * Dates and common allergens are translated from local tables (deterministic
+ * and free, see `locale.ts`); dish names and free text instead go through
+ * the translation API, arriving here already resolved into a `Translations`.
  */
 
 import type { Language } from "./locale";
@@ -13,7 +12,7 @@ import { locale } from "./locale";
 import type { DayMenu, Dish, EveningMenu } from "./matkant";
 import type { Translations } from "./translate";
 
-/** Mostra l'originale danese accanto alla traduzione (utile davanti al bancone). */
+/** Shows the Danish original next to the translation (handy at the counter). */
 const SHOW_ORIGINAL = process.env.SHOW_ORIGINAL !== "false";
 
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -28,7 +27,7 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * Date e intestazioni, tradotte localmente:
+ * Dates and headers, translated locally:
  *   "Mandag den 24. august"      → "Lunedì 24 agosto" (it)
  *   "Uge 35, 2026"               → "Settimana 35, 2026" (it)
  *   "24.08.2026 til 28.08.2026"  → "24.08.2026 – 28.08.2026"
@@ -49,7 +48,7 @@ export function localizeHeader(header: string, lang: Language = "it"): string {
     .replace(/\p{L}+/gu, (w) => loc.weekdays[w.toLowerCase()] ?? w);
 }
 
-/** Pezzi di `contains_da` che le tabelle locali non coprono. */
+/** Parts of `contains_da` not covered by the local tables. */
 function unknownAllergens(contains: string, lang: Language): string[] {
   const loc = locale(lang);
   return splitAllergens(contains)
@@ -69,7 +68,7 @@ function splitAllergens(contains: string): { traces: boolean; term: string }[] {
     .filter((p) => p.term.length > 0);
 }
 
-/** "Kylling, Spor af skaldyr" → "pollo, tracce di crostacei" */
+/** "Kylling, Spor af skaldyr" → "chicken, traces of shellfish" */
 function formatAllergens(contains: string, tr: Translations, lang: Language): string {
   const loc = locale(lang);
   return splitAllergens(contains)
@@ -81,13 +80,13 @@ function formatAllergens(contains: string, tr: Translations, lang: Language): st
     .join(", ");
 }
 
-/** Traduzione se disponibile e diversa dall'originale, altrimenti il danese. */
+/** Translation if available and different from the original, otherwise the Danish text. */
 function localize(text: string, tr: Translations): string {
   const t = tr.get(text.trim());
   return t && t.toLowerCase() !== text.trim().toLowerCase() ? t : text;
 }
 
-/** Come `localize`, ma tiene anche l'originale danese tra parentesi. */
+/** Like `localize`, but also keeps the Danish original in parentheses. */
 function localizeWithOriginal(text: string, tr: Translations, lang: Language): string {
   const t = localize(text, tr);
   if (lang === "da" || !SHOW_ORIGINAL || t === text) return escapeHtml(t);
@@ -105,7 +104,7 @@ function formatDish(dish: Dish, tr: Translations, lang: Language): string {
   return line;
 }
 
-/** Un giorno di pranzo. `heading` sovrascrive il titolo (es. "Oggi"). */
+/** One lunch day. `heading` overrides the title (e.g. "Today"). */
 export function formatDay(
   day: DayMenu,
   tr: Translations,
@@ -141,7 +140,7 @@ export function formatDay(
   return lines.join("\n");
 }
 
-/** Messaggio giornaliero: oggi in evidenza + anteprima del resto della settimana. */
+/** Daily message: today highlighted + preview of the rest of the week. */
 export function formatDaily(days: DayMenu[], tr: Translations, lang: Language = "it"): string {
   const loc = locale(lang);
   if (days.length === 0) return loc.ui.noDataAvailable;
@@ -174,7 +173,7 @@ export function formatDaily(days: DayMenu[], tr: Translations, lang: Language = 
   return blocks.join("\n\n———\n\n");
 }
 
-/** Settimana intera, con tutti i dettagli. */
+/** Full week, with all the details. */
 export function formatWeek(days: DayMenu[], tr: Translations, lang: Language = "it"): string {
   const loc = locale(lang);
   if (days.length === 0) return loc.ui.noDataAvailable;
@@ -184,7 +183,7 @@ export function formatWeek(days: DayMenu[], tr: Translations, lang: Language = "
   );
 }
 
-/** Menù/apertura serale (una o più settimane). */
+/** Evening menu/opening hours (one or more weeks). */
 export function formatEvening(weeks: EveningMenu[], tr: Translations, lang: Language = "it"): string {
   const loc = locale(lang);
   if (weeks.length === 0) return loc.ui.noDataAvailable;
@@ -226,7 +225,7 @@ export function formatEvening(weeks: EveningMenu[], tr: Translations, lang: Lang
   return `🌙 <b>${loc.ui.eveningTitle}</b>\n\n` + blocks.join("\n\n———\n\n");
 }
 
-/** Tutte le stringhe di un menù di pranzo che vanno passate al traduttore. */
+/** All the strings of a lunch menu that need to go through the translator. */
 export function textsToTranslate(days: DayMenu[], lang: Language = "it"): string[] {
   const texts: string[] = [];
   for (const day of days) {
@@ -238,7 +237,7 @@ export function textsToTranslate(days: DayMenu[], lang: Language = "it"): string
   return texts.filter(Boolean);
 }
 
-/** Idem, per il menù serale. */
+/** Same, for the evening menu. */
 export function textsToTranslateEvening(weeks: EveningMenu[], lang: Language = "it"): string[] {
   const texts: string[] = [];
   for (const week of weeks) {

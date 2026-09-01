@@ -1,4 +1,4 @@
-/** SQLite condiviso: iscritti (con lingua) + cache delle traduzioni. */
+/** Shared SQLite database: subscribers (with language) + translation cache. */
 
 import { Database } from "bun:sqlite";
 import { type Language, isLanguage } from "./locale";
@@ -15,7 +15,7 @@ db.exec(`
   );
 `);
 
-// Migrazione: i DB creati prima dell'introduzione della lingua non hanno la colonna.
+// Migration: DBs created before language support don't have this column.
 const hasLanguageColumn = db
   .query<{ name: string }, []>("PRAGMA table_info(subscribers)")
   .all()
@@ -50,12 +50,12 @@ const setLang = db.query<unknown, [string, number]>(
   "UPDATE subscribers SET language = ? WHERE chat_id = ?",
 );
 
-/** true se l'iscrizione è nuova. */
+/** true if the subscription is new. */
 export function subscribe(chatId: number): boolean {
   return insert.run(chatId).changes > 0;
 }
 
-/** true se c'era davvero un'iscrizione da rimuovere. */
+/** true if there really was a subscription to remove. */
 export function unsubscribe(chatId: number): boolean {
   return remove.run(chatId).changes > 0;
 }
@@ -74,14 +74,14 @@ export interface SubscriberRow {
   createdAt: string;
 }
 
-/** Tutti gli iscritti con lingua e data di iscrizione, per il dump admin. */
+/** Every subscriber with language and signup date, for the admin dump. */
 export function listAllSubscribers(): SubscriberRow[] {
   return allSubscribers
     .all()
     .map((r) => ({ chatId: r.chat_id, language: r.language, createdAt: r.created_at }));
 }
 
-/** Iscritti raggruppati per lingua, per tradurre/formattare una volta sola a gruppo. */
+/** Subscribers grouped by language, so translation/formatting happens once per group. */
 export function listSubscribersByLanguage(): Map<Language, number[]> {
   const out = new Map<Language, number[]>();
   for (const row of allWithLanguage.all()) {
@@ -93,13 +93,13 @@ export function listSubscribersByLanguage(): Map<Language, number[]> {
   return out;
 }
 
-/** Lingua della chat, "da" se non impostata o sconosciuta. */
+/** Chat's language, "da" if unset or unknown. */
 export function getLanguage(chatId: number): Language {
   const row = getLang.get(chatId);
   return row && isLanguage(row.language) ? row.language : "da";
 }
 
-/** Imposta la lingua della chat; se non è ancora iscritta la crea con quella lingua. */
+/** Sets the chat's language; creates the subscriber row with it if not yet subscribed. */
 export function setLanguage(chatId: number, lang: Language): void {
   db.transaction(() => {
     insert.run(chatId);

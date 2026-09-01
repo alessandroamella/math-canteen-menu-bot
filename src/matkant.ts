@@ -1,9 +1,9 @@
 /**
- * Client per i dati del menù della Matematisk Kantine (matkant.dk).
+ * Client for the Matematisk Kantine (matkant.dk) menu data.
  *
- * La pagina https://www.matkant.dk/menu/dag/ è renderizzata lato client da
- * design/js/m.js, che legge il JSON da /data/m/d (pranzo) e /data/m/e (sera).
- * Usiamo direttamente quegli endpoint: niente parsing di HTML.
+ * The page https://www.matkant.dk/menu/dag/ is client-side rendered by
+ * design/js/m.js, which reads JSON from /data/m/d (lunch) and /data/m/e
+ * (evening). We hit those endpoints directly: no HTML parsing.
  */
 
 const BASE = "https://www.matkant.dk/data/m/";
@@ -13,18 +13,18 @@ export type Category = "meat" | "veg" | "other" | (string & {});
 export interface Dish {
   id: number;
   name: string;
-  /** Allergeni / ingredienti, in danese. Può essere stringa vuota. */
+  /** Allergens / ingredients, in Danish. Can be an empty string. */
   contains_da: string;
   contains_en: string;
   category: Category;
   ui_class: string;
-  /** Supplemento in DKK, come stringa. Vuoto se incluso nel prezzo a peso. */
+  /** Surcharge in DKK, as a string. Empty if included in the weight price. */
   price: string;
 }
 
-/** Un giorno del menù di pranzo (endpoint /data/m/d). */
+/** One day of the lunch menu (endpoint /data/m/d). */
 export interface DayMenu {
-  /** Es. "Mandag den 24. august" */
+  /** E.g. "Mandag den 24. august" */
   header: string;
   menu: Dish[];
   open: 0 | 1;
@@ -44,11 +44,11 @@ export interface EveningDay {
   status: string;
 }
 
-/** Una settimana del menù serale (endpoint /data/m/e). */
+/** One week of the evening menu (endpoint /data/m/e). */
 export interface EveningMenu {
-  /** Es. "Uge 35, 2026" */
+  /** E.g. "Uge 35, 2026" */
   header: string;
-  /** Es. "24.08.2026 til 28.08.2026" */
+  /** E.g. "24.08.2026 til 28.08.2026" */
   subheader: string;
   menu: Dish[];
   open_week: EveningDay[];
@@ -70,17 +70,17 @@ async function getJson<T>(path: string): Promise<T> {
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
-    throw new Error(`matkant.dk ha risposto ${res.status} ${res.statusText}`);
+    throw new Error(`matkant.dk responded ${res.status} ${res.statusText}`);
   }
   return (await res.json()) as T;
 }
 
-/** Menù di pranzo: oggi + i giorni successivi (l'API ne restituisce ~8). */
+/** Lunch menu: today + the following days (the API returns ~8). */
 export function fetchDayMenu(): Promise<DayMenu[]> {
   return getJson<DayMenu[]>("d");
 }
 
-/** Menù/apertura serale, settimana per settimana. */
+/** Evening menu/opening hours, week by week. */
 export function fetchEveningMenu(): Promise<EveningMenu[]> {
   return getJson<EveningMenu[]>("e");
 }
@@ -95,15 +95,15 @@ const WEEKDAYS_DA = [
   "Søndag",
 ] as const;
 
-/** Indice 0-6 (lunedì-domenica) ricavato dall'header danese del giorno. */
+/** 0-6 index (Monday-Sunday) derived from the day's Danish header. */
 export function weekdayIndex(day: DayMenu): number {
   const name = day.header.split(" ")[0]?.toLowerCase() ?? "";
   return WEEKDAYS_DA.findIndex((d) => d.toLowerCase() === name);
 }
 
 /**
- * Da oggi fino alla domenica inclusa: l'API restituisce più giorni del
- * necessario, quindi tagliamo appena l'indice del giorno "torna indietro".
+ * From today up to and including Sunday: the API returns more days than
+ * needed, so we cut as soon as the day index "wraps back around".
  */
 export function restOfWeek(days: DayMenu[]): DayMenu[] {
   const out: DayMenu[] = [];

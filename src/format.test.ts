@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { formatDay, localizeHeader, textsToTranslate } from "./format";
 import type { DayMenu } from "./matkant";
 
-test("localizeHeader traduce le date danesi", () => {
+test("localizeHeader translates Danish dates", () => {
   expect(localizeHeader("Mandag den 24. august")).toBe("Lunedì 24 agosto");
   expect(localizeHeader("Søndag den 1. december")).toBe("Domenica 1 dicembre");
   expect(localizeHeader("Uge 35, 2026")).toBe("Settimana 35, 2026");
@@ -35,12 +35,12 @@ const day: DayMenu = {
   weight_price_text: "",
 };
 
-test("textsToTranslate manda all'API i piatti e solo gli allergeni ignoti", () => {
-  // "Okse" è nella tabella locale, "Hestekød" no.
+test("textsToTranslate sends the API only dishes and unknown allergens", () => {
+  // "Okse" is in the local table, "Hestekød" is not.
   expect(textsToTranslate([day])).toEqual(["Rødvinssauce", "Hestekød"]);
 });
 
-test("formatDay usa traduzione, tabella allergeni e originale danese", () => {
+test("formatDay uses translation, allergen table, and Danish original", () => {
   const out = formatDay(
     day,
     new Map([
@@ -56,7 +56,7 @@ test("formatDay usa traduzione, tabella allergeni e originale danese", () => {
   expect(out).toContain("contiene: tracce di manzo, carne di cavallo");
 });
 
-test("senza traduzione disponibile resta il danese", () => {
+test("without translation available it stays in Danish", () => {
   const out = formatDay(day, new Map());
   expect(out).toContain("🍖 Rødvinssauce");
   expect(out).not.toContain("undefined");

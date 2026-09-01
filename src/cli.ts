@@ -1,4 +1,4 @@
-/** Stampa il menù nel terminale, senza toccare Telegram. Utile per provare lo scraper. */
+/** Prints the menu to the terminal, without touching Telegram. Handy to try out the scraper. */
 
 import { fetchDayMenu, fetchEveningMenu, restOfWeek } from "./matkant";
 import {
@@ -11,7 +11,7 @@ import {
 import { isLanguage, locale, type Language } from "./locale";
 import { provider, translateAll } from "./translate";
 
-/** Rende leggibile in terminale l'HTML che manderemmo a Telegram. */
+/** Makes the HTML we'd send to Telegram readable in a terminal. */
 function stripHtml(s: string): string {
   return s
     .replace(/<[^>]+>/g, "")
@@ -20,21 +20,24 @@ function stripHtml(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
+const WEEK_ALIASES = new Set(["week", "settimana"]);
+const EVENING_ALIASES = new Set(["evening", "sera"]);
+
 const args = process.argv.slice(2);
 const langArg = args.find(isLanguage);
 const lang: Language = langArg ?? "it";
-const mode = args.find((a) => !isLanguage(a)) ?? "oggi";
+const mode = args.find((a) => !isLanguage(a)) ?? "today";
 
 let text: string;
-if (mode === "sera") {
+if (EVENING_ALIASES.has(mode)) {
   const weeks = await fetchEveningMenu();
   const tr = await translateAll(textsToTranslateEvening(weeks, lang), locale(lang).translateTo);
   text = formatEvening(weeks, tr, lang);
 } else {
   const days = await fetchDayMenu();
   const tr = await translateAll(textsToTranslate(days, lang), locale(lang).translateTo);
-  text = mode === "settimana" ? formatWeek(restOfWeek(days), tr, lang) : formatDaily(days, tr, lang);
+  text = WEEK_ALIASES.has(mode) ? formatWeek(restOfWeek(days), tr, lang) : formatDaily(days, tr, lang);
 }
 
-console.error(`[lingua: ${lang}, traduzione: ${provider}]`);
+console.error(`[language: ${lang}, translation: ${provider}]`);
 console.log(stripHtml(text));

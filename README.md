@@ -64,22 +64,26 @@ Con `SHOW_ORIGINAL=false` sparisce la parte fra parentesi.
 
 ## Comandi del bot
 
+I comandi sono in inglese (unici mostrati nel menu di Telegram); ognuno ha
+anche alias nascosti nelle altre lingue che funzionano lo stesso ma non
+compaiono nel menu (es. `/today` = `/oggi` = `/idag` = `/dnes`).
+
 - `/start` — iscriviti all'invio giornaliero (al primo avvio chiede la lingua)
-- `/language` — scegli o cambia lingua (danese, italiano, ceco, slovacco)
-- `/oggi` — menù di oggi + anteprima dei prossimi giorni
-- `/settimana` — resto della settimana, con allergeni e prezzi
-- `/sera` — buffet serale
-- `/status` — stato dell'iscrizione e lingua attiva
-- `/stop` — disiscriviti
+- `/language` (alias: `lingua`, `sprog`, `jazyk`) — scegli o cambia lingua
+- `/today` (alias: `oggi`, `idag`, `dnes`, `menu`) — menù di oggi + anteprima dei prossimi giorni
+- `/week` (alias: `settimana`, `uge`, `tyden`, `tyzden`) — resto della settimana, con allergeni e prezzi
+- `/evening` (alias: `sera`, `aften`, `vecer`) — buffet serale
+- `/status` (alias: `stato`) — stato dell'iscrizione e lingua attiva
+- `/stop` (alias: `ferma`, `zastavit`) — disiscriviti
 - `/admin` — 🔐 solo per `ADMIN_USER_ID`: dump di tutti gli iscritti (chat_id, lingua, data) e della cache traduzioni
 
 ## Senza Telegram
 
 ```sh
 bun run menu                # oggi + prossimi giorni, italiano
-bun run menu settimana
-bun run menu sera
-bun run menu settimana cs   # in ceco
+bun run menu week
+bun run menu evening
+bun run menu week cs        # in ceco
 bun run menu da             # in danese, senza traduzione
 ```
 

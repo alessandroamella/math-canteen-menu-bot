@@ -1,8 +1,8 @@
 /**
- * Lingue supportate e tabelle di localizzazione (giorni, mesi, allergeni, UI).
+ * Supported languages and localization tables (weekdays, months, allergens, UI).
  *
- * Il danese ("da") è la lingua sorgente: non viene tradotto, e i testi di UI
- * restano in danese così l'utente vede il menù "così com'è" se lo sceglie.
+ * Danish ("da") is the source language: it's never translated, and its UI
+ * text stays in Danish so a user who picks it sees the menu "as is".
  */
 
 export type Language = "da" | "it" | "cs" | "sk";
@@ -21,7 +21,7 @@ export function isLanguage(value: string): value is Language {
 }
 
 interface Locale {
-  /** Codice target per l'API di traduzione, null se non serve tradurre (danese). */
+  /** Target code for the translation API, null if no translation is needed (Danish). */
   translateTo: string | null;
   weekdays: Record<string, string>;
   months: Record<string, string>;
@@ -44,7 +44,7 @@ interface Locale {
     weekWord: string;
     tilWord: RegExp;
 
-    // Testi del bot Telegram (menu, comandi, stato, admin).
+    // Telegram bot text (menu, commands, status, admin).
     alreadySubscribed: string;
     subscribedIntro: string;
     dailyAt: (hhmm: string, tz: string) => string;

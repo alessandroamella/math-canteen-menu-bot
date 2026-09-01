@@ -1,16 +1,16 @@
 /**
- * Traduzione danese → lingua a scelta (italiano, ceco, slovacco), con cache
- * persistente.
+ * Danish → chosen language translation (Italian, Czech, Slovak), with a
+ * persistent cache.
  *
- * I nomi dei piatti si ripetono molto tra un giorno e l'altro, quindi ogni
- * stringa viene tradotta una volta sola per lingua e poi riletta da SQLite:
- * la quota dell'API si consuma solo sulle novità.
+ * Dish names repeat a lot from one day to the next, so each string is
+ * translated once per language and then read back from SQLite: the API
+ * quota is only spent on new content.
  *
  * Provider (env `TRANSLATE_PROVIDER`):
- *   google   — Cloud Translation v2, richiede GOOGLE_TRANSLATE_API_KEY
- *   deepl    — richiede DEEPL_API_KEY (suffisso `:fx` = piano free)
- *   mymemory — gratuito e senza chiave (default), quota più alta con MYMEMORY_EMAIL
- *   none     — traduzione disattivata, si tiene il danese
+ *   google   — Cloud Translation v2, requires GOOGLE_TRANSLATE_API_KEY
+ *   deepl    — requires DEEPL_API_KEY (":fx" suffix = free plan)
+ *   mymemory — free, no key needed (default), higher quota with MYMEMORY_EMAIL
+ *   none     — translation disabled, keeps the Danish text
  */
 
 import { db } from "./db";
@@ -37,8 +37,8 @@ db.exec(`
   );
 `);
 
-// Migrazione: le versioni precedenti traducevano solo verso l'italiano e non
-// avevano la colonna `target`. È solo una cache, quindi la ricreiamo da zero.
+// Migration: earlier versions only translated to Italian and had no `target`
+// column. It's just a cache, so we recreate it from scratch.
 const hasTargetColumn = db
   .query<{ name: string }, []>("PRAGMA table_info(translations)")
   .all()
@@ -64,28 +64,28 @@ const writeCache = db.query<unknown, [string, string, string, string]>(
   "INSERT OR REPLACE INTO translations (provider, source, target, translated) VALUES (?, ?, ?, ?)",
 );
 
-/** Mappa testo originale → traduzione. I testi non tradotti non compaiono. */
+/** Map of original text → translation. Untranslated texts don't appear. */
 export type Translations = Map<string, string>;
 
 const cacheCountByTarget = db.query<{ target: string; n: number }, []>(
   "SELECT target, COUNT(*) AS n FROM translations GROUP BY target",
 );
 
-/** Numero di stringhe in cache per lingua target, per il dump admin. */
+/** Number of cached strings per target language, for the admin dump. */
 export function translationCacheStats(): Map<string, number> {
   return new Map(cacheCountByTarget.all().map((r) => [r.target, r.n]));
 }
 
 function fail(res: Response, body: string): never {
   throw new Error(
-    `Traduzione fallita (${provider}): ${res.status} ${res.statusText} — ${body.slice(0, 200)}`,
+    `Translation failed (${provider}): ${res.status} ${res.statusText} — ${body.slice(0, 200)}`,
   );
 }
 
-/** Cloud Translation v2: accetta l'intero batch in una richiesta. */
+/** Cloud Translation v2: the whole batch fits in one request. */
 async function translateGoogle(texts: string[], target: string): Promise<string[]> {
   const key = process.env.GOOGLE_TRANSLATE_API_KEY;
-  if (!key) throw new Error("Manca GOOGLE_TRANSLATE_API_KEY.");
+  if (!key) throw new Error("Missing GOOGLE_TRANSLATE_API_KEY.");
 
   const res = await fetch(
     `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(key)}`,
@@ -109,11 +109,11 @@ async function translateGoogle(texts: string[], target: string): Promise<string[
   return json.data.translations.map((t) => t.translatedText);
 }
 
-/** DeepL: anche qui il batch sta in una sola richiesta. */
+/** DeepL: the batch also fits in a single request here. */
 async function translateDeepl(texts: string[], target: string): Promise<string[]> {
   const key = process.env.DEEPL_API_KEY;
-  if (!key) throw new Error("Manca DEEPL_API_KEY.");
-  // Le chiavi del piano free finiscono con ":fx" e usano un host diverso.
+  if (!key) throw new Error("Missing DEEPL_API_KEY.");
+  // Free-plan keys end in ":fx" and use a different host.
   const host = key.endsWith(":fx") ? "api-free.deepl.com" : "api.deepl.com";
 
   const res = await fetch(`https://${host}/v2/translate`, {
@@ -135,14 +135,14 @@ async function translateDeepl(texts: string[], target: string): Promise<string[]
   return json.translations.map((t) => t.text);
 }
 
-/** MyMemory: una stringa per richiesta, quindi le mandiamo in sequenza. */
+/** MyMemory: one string per request, so they're sent sequentially. */
 async function translateMyMemory(texts: string[], target: string): Promise<string[]> {
   const out: string[] = [];
   for (const text of texts) {
     const url = new URL("https://api.mymemory.translated.net/get");
     url.searchParams.set("q", text);
     url.searchParams.set("langpair", `${SOURCE}|${target}`);
-    // Dichiarare un'email alza la quota anonima da 5k a 50k caratteri/giorno.
+    // Declaring an email raises the anonymous quota from 5k to 50k chars/day.
     if (process.env.MYMEMORY_EMAIL) {
       url.searchParams.set("de", process.env.MYMEMORY_EMAIL);
     }
@@ -157,8 +157,8 @@ async function translateMyMemory(texts: string[], target: string): Promise<strin
     };
     if (Number(json.responseStatus) !== 200 || json.quotaFinished) {
       throw new Error(
-        `MyMemory ha rifiutato la richiesta (status ${json.responseStatus}` +
-          `${json.quotaFinished ? ", quota esaurita" : ""}).`,
+        `MyMemory rejected the request (status ${json.responseStatus}` +
+          `${json.quotaFinished ? ", quota exhausted" : ""}).`,
       );
     }
     out.push(json.responseData.translatedText);
@@ -180,11 +180,11 @@ function callProvider(texts: string[], target: string): Promise<string[]> {
 }
 
 /**
- * Traduce un insieme di stringhe verso `target`, usando la cache dove possibile.
- * Se `target` è null (danese, la lingua sorgente) restituisce subito una mappa
- * vuota: non c'è nulla da tradurre.
- * Se l'API fallisce non solleva: restituisce solo ciò che era già in cache,
- * così un contrattempo di rete degrada al danese invece di far saltare il menù.
+ * Translates a set of strings towards `target`, using the cache where
+ * possible. If `target` is null (Danish, the source language) it returns an
+ * empty map right away: there's nothing to translate.
+ * If the API fails it doesn't throw: it returns only what was already
+ * cached, so a network hiccup degrades to Danish instead of breaking the menu.
  */
 export async function translateAll(
   texts: Iterable<string>,
@@ -214,7 +214,7 @@ export async function translateAll(
       });
     })();
   } catch (err) {
-    console.error("[translate] traduzione saltata, resto in danese:", err);
+    console.error("[translate] translation skipped, staying in Danish:", err);
   }
   return result;
 }

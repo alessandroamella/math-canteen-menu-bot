@@ -1,4 +1,4 @@
-/** Scheduler giornaliero, consapevole del fuso orario (e quindi dell'ora legale). */
+/** Daily scheduler, timezone-aware (and therefore DST-aware). */
 
 interface Parts {
   year: number;
@@ -27,21 +27,21 @@ function partsInZone(date: Date, timeZone: string): Parts {
     year: +p.year!,
     month: +p.month!,
     day: +p.day!,
-    // Intl può emettere "24" per mezzanotte in hourCycle h23/h24.
+    // Intl can emit "24" for midnight under hourCycle h23/h24.
     hour: +p.hour! % 24,
     minute: +p.minute!,
     second: +p.second!,
   };
 }
 
-/** Offset del fuso rispetto a UTC, in ms, valido all'istante `date`. */
+/** Timezone offset from UTC, in ms, valid at instant `date`. */
 function zoneOffset(date: Date, timeZone: string): number {
   const p = partsInZone(date, timeZone);
   const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
   return asUtc - Math.floor(date.getTime() / 1000) * 1000;
 }
 
-/** Millisecondi fino alla prossima occorrenza di hh:mm nel fuso indicato. */
+/** Milliseconds until the next occurrence of hh:mm in the given timezone. */
 export function msUntilNext(
   hour: number,
   minute: number,
@@ -61,9 +61,9 @@ export function msUntilNext(
 }
 
 /**
- * Esegue `task` ogni giorno a hh:mm nel fuso indicato. Il ritardo è ricalcolato
- * a ogni giro, così i cambi di ora legale non sfasano l'orario.
- * Restituisce una funzione per fermare lo scheduler.
+ * Runs `task` every day at hh:mm in the given timezone. The delay is
+ * recomputed on every run, so DST transitions don't drift the schedule.
+ * Returns a function to stop the scheduler.
  */
 export function scheduleDaily(
   hour: number,
@@ -77,7 +77,7 @@ export function scheduleDaily(
   const arm = () => {
     const delay = msUntilNext(hour, minute, timeZone);
     console.log(
-      `[schedule] prossimo invio tra ${Math.round(delay / 60_000)} min ` +
+      `[schedule] next run in ${Math.round(delay / 60_000)} min ` +
         `(${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${timeZone})`,
     );
     timer = setTimeout(async () => {
@@ -85,7 +85,7 @@ export function scheduleDaily(
       try {
         await task();
       } catch (err) {
-        console.error("[schedule] task fallito:", err);
+        console.error("[schedule] task failed:", err);
       }
       arm();
     }, delay);

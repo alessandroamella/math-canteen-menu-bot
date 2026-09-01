@@ -1,4 +1,4 @@
-/** Bot Telegram per il menù della Matematisk Kantine. */
+/** Telegram bot for the Matematisk Kantine menu. */
 
 import { Bot, GrammyError, HttpError, InlineKeyboard } from "grammy";
 import {
@@ -24,15 +24,15 @@ import { provider, translateAll, translationCacheStats, type Translations } from
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
-  console.error("Manca TELEGRAM_BOT_TOKEN (mettilo in .env).");
+  console.error("Missing TELEGRAM_BOT_TOKEN (put it in .env).");
   process.exit(1);
 }
 
 const TZ = process.env.TZ_NAME ?? "Europe/Copenhagen";
 const [SEND_HOUR = 9, SEND_MINUTE = 0] = (process.env.SEND_AT ?? "09:00").split(":").map(Number);
-/** Se true, nessun messaggio giornaliero nel weekend (mensa chiusa). */
+/** If true, no daily message on weekends (canteen closed). */
 const SKIP_WEEKEND = process.env.SKIP_WEEKEND !== "false";
-/** ID utente Telegram dell'admin: unico autorizzato a /admin. */
+/** Telegram user ID of the admin: the only one authorized to use /admin. */
 const ADMIN_USER_ID = process.env.ADMIN_USER_ID ? Number(process.env.ADMIN_USER_ID) : null;
 
 function isAdmin(userId: number | undefined): boolean {
@@ -45,7 +45,33 @@ const send = {
   link_preview_options: { is_disabled: true }
 };
 
-/** Cache brevissima: evita di martellare l'API con più comandi ravvicinati. */
+interface CommandDef {
+  /** English name: the only one published in Telegram's command menu. */
+  primary: string;
+  /** Hidden aliases (other languages, old names) — still trigger the command. */
+  aliases: string[];
+}
+
+/**
+ * Command names, English first (published), with hidden aliases in other
+ * languages so `/oggi`, `/uge`, `/jazyk`, etc. keep working without showing
+ * up in Telegram's command menu.
+ */
+const COMMANDS = {
+  today: { primary: "today", aliases: ["oggi", "idag", "dnes", "menu"] },
+  week: { primary: "week", aliases: ["settimana", "uge", "tyden", "tyzden"] },
+  evening: { primary: "evening", aliases: ["sera", "aften", "vecer"] },
+  language: { primary: "language", aliases: ["lingua", "sprog", "jazyk"] },
+  status: { primary: "status", aliases: ["stato"] },
+  stop: { primary: "stop", aliases: ["ferma", "zastavit"] },
+  admin: { primary: "admin", aliases: [] },
+} satisfies Record<string, CommandDef>;
+
+function allNames(cmd: CommandDef): string[] {
+  return [cmd.primary, ...cmd.aliases];
+}
+
+/** Very short-lived cache: avoids hammering the API with several close-together commands. */
 let cache: { at: number; days: DayMenu[] } | null = null;
 const CACHE_MS = 5 * 60_000;
 
@@ -56,7 +82,7 @@ async function getDays(): Promise<DayMenu[]> {
   return days;
 }
 
-/** Menù di pranzo già accompagnato dalle sue traduzioni verso `lang`. */
+/** Lunch menu already paired with its translations towards `lang`. */
 async function getDaysTranslated(lang: Language): Promise<[DayMenu[], Translations]> {
   const days = await getDays();
   return [days, await translateAll(textsToTranslate(days, lang), locale(lang).translateTo)];
@@ -72,25 +98,25 @@ function languageKeyboard(): InlineKeyboard {
 
 const HHMM = `${String(SEND_HOUR).padStart(2, "0")}:${String(SEND_MINUTE).padStart(2, "0")}`;
 
-/** Testo dei comandi disponibili, nella lingua della chat, con la riga admin se l'utente lo è. */
+/** Text of the available commands, in the chat's language, with the admin line if applicable. */
 function helpText(lang: Language, userId: number | undefined): string {
   const ui = locale(lang).ui;
   return (
     `${ui.dailyAt(HHMM, TZ)}\n\n` +
-    `/oggi — ${ui.cmdTodayDesc}\n` +
-    `/settimana — ${ui.cmdWeekDesc}\n` +
-    `/sera — ${ui.cmdEveningDesc}\n` +
-    `/language — ${ui.cmdLanguageDesc}\n` +
-    `/stop — ${ui.cmdStopDesc}` +
-    (isAdmin(userId) ? `\n/admin — ${ui.cmdAdminDesc}` : "")
+    `/${COMMANDS.today.primary} — ${ui.cmdTodayDesc}\n` +
+    `/${COMMANDS.week.primary} — ${ui.cmdWeekDesc}\n` +
+    `/${COMMANDS.evening.primary} — ${ui.cmdEveningDesc}\n` +
+    `/${COMMANDS.language.primary} — ${ui.cmdLanguageDesc}\n` +
+    `/${COMMANDS.stop.primary} — ${ui.cmdStopDesc}` +
+    (isAdmin(userId) ? `\n/${COMMANDS.admin.primary} — ${ui.cmdAdminDesc}` : "")
   );
 }
 
 bot.catch(err => {
   const e = err.error;
-  if (e instanceof GrammyError) console.error("Errore API Telegram:", e.description);
-  else if (e instanceof HttpError) console.error("Errore di rete:", e);
-  else console.error("Errore non gestito:", e);
+  if (e instanceof GrammyError) console.error("Telegram API error:", e.description);
+  else if (e instanceof HttpError) console.error("Network error:", e);
+  else console.error("Unhandled error:", e);
 });
 
 bot.command("start", async ctx => {
@@ -129,33 +155,33 @@ bot.callbackQuery(/^lang:(.+)$/, async ctx => {
   }
 });
 
-bot.command("language", async ctx => {
+bot.command(allNames(COMMANDS.language), async ctx => {
   await ctx.reply("🌐 Choose your language / Scegli la lingua:", {
     reply_markup: languageKeyboard(),
   });
 });
 
-bot.command("stop", async ctx => {
+bot.command(allNames(COMMANDS.stop), async ctx => {
   const ui = locale(getLanguage(ctx.chat.id)).ui;
   const removed = unsubscribe(ctx.chat.id);
   await ctx.reply(removed ? ui.stopSuccess : ui.stopNotSubscribed);
 });
 
-bot.command(["oggi", "today", "menu"], async ctx => {
+bot.command(allNames(COMMANDS.today), async ctx => {
   await ctx.replyWithChatAction("typing");
   const lang = getLanguage(ctx.chat.id);
   const [days, tr] = await getDaysTranslated(lang);
   await ctx.reply(formatDaily(days, tr, lang), send);
 });
 
-bot.command(["settimana", "week"], async ctx => {
+bot.command(allNames(COMMANDS.week), async ctx => {
   await ctx.replyWithChatAction("typing");
   const lang = getLanguage(ctx.chat.id);
   const [days, tr] = await getDaysTranslated(lang);
   await ctx.reply(formatWeek(restOfWeek(days), tr, lang), send);
 });
 
-bot.command(["sera", "evening", "aften"], async ctx => {
+bot.command(allNames(COMMANDS.evening), async ctx => {
   await ctx.replyWithChatAction("typing");
   const lang = getLanguage(ctx.chat.id);
   const weeks = await fetchEveningMenu();
@@ -163,7 +189,7 @@ bot.command(["sera", "evening", "aften"], async ctx => {
   await ctx.reply(formatEvening(weeks, tr, lang), send);
 });
 
-bot.command("status", async ctx => {
+bot.command(allNames(COMMANDS.status), async ctx => {
   const lang = getLanguage(ctx.chat.id);
   const ui = locale(lang).ui;
   await ctx.reply(
@@ -175,7 +201,7 @@ bot.command("status", async ctx => {
   );
 });
 
-bot.command("admin", async ctx => {
+bot.command(allNames(COMMANDS.admin), async ctx => {
   const ui = locale(getLanguage(ctx.chat.id)).ui;
   if (!isAdmin(ctx.from?.id)) {
     await ctx.reply(ui.adminDenied);
@@ -207,7 +233,7 @@ bot.command("admin", async ctx => {
   await ctx.reply(lines.join("\n"), send);
 });
 
-/** Invia il menù del giorno a tutti gli iscritti, raggruppati per lingua. */
+/** Sends today's menu to every subscriber, grouped by language. */
 export async function broadcastDaily(): Promise<void> {
   const byLanguage = listSubscribersByLanguage();
   if (byLanguage.size === 0) return;
@@ -217,7 +243,7 @@ export async function broadcastDaily(): Promise<void> {
   const today = days[0];
 
   if (SKIP_WEEKEND && today && !today.open && !today.has_menu) {
-    console.log("[broadcast] mensa chiusa oggi, nessun invio.");
+    console.log("[broadcast] canteen closed today, nothing sent.");
     return;
   }
 
@@ -232,37 +258,44 @@ export async function broadcastDaily(): Promise<void> {
         await bot.api.sendMessage(chatId, text, send);
         sent++;
       } catch (err) {
-        // 403 = l'utente ha bloccato il bot; 400 = chat inesistente. Ripuliamo.
+        // 403 = the user blocked the bot; 400 = chat no longer exists. Clean up.
         if (err instanceof GrammyError && (err.error_code === 403 || err.error_code === 400)) {
           unsubscribe(chatId);
-          console.log(`[broadcast] rimosso ${chatId}: ${err.description}`);
+          console.log(`[broadcast] removed ${chatId}: ${err.description}`);
         } else {
-          console.error(`[broadcast] invio a ${chatId} fallito:`, err);
+          console.error(`[broadcast] failed to send to ${chatId}:`, err);
         }
       }
-      // Telegram limita a ~30 messaggi/s in broadcast.
+      // Telegram limits broadcasts to ~30 messages/s.
       await Bun.sleep(50);
     }
   }
-  console.log(`[broadcast] inviato a ${sent}/${total} chat.`);
+  console.log(`[broadcast] sent to ${sent}/${total} chats.`);
 }
 
 function commandList(lang: Language, admin: boolean): { command: string; description: string }[] {
   const ui = locale(lang).ui;
   const list = [
-    { command: "oggi", description: ui.cmdTodayDesc },
-    { command: "settimana", description: ui.cmdWeekDesc },
-    { command: "sera", description: ui.cmdEveningDesc },
-    { command: "language", description: ui.cmdLanguageDesc },
-    { command: "status", description: ui.statusSubscriptionLabel },
+    { command: COMMANDS.today.primary, description: ui.cmdTodayDesc },
+    { command: COMMANDS.week.primary, description: ui.cmdWeekDesc },
+    { command: COMMANDS.evening.primary, description: ui.cmdEveningDesc },
+    { command: COMMANDS.language.primary, description: ui.cmdLanguageDesc },
+    { command: COMMANDS.status.primary, description: ui.statusSubscriptionLabel },
   ];
-  if (admin) list.push({ command: "admin", description: ui.cmdAdminDesc });
-  list.push({ command: "stop", description: ui.cmdStopDesc });
+  if (admin) list.push({ command: COMMANDS.admin.primary, description: ui.cmdAdminDesc });
+  list.push({ command: COMMANDS.stop.primary, description: ui.cmdStopDesc });
   return list;
 }
 
-// Lista globale: nessuna lingua è nota in anticipo, quindi resta in danese (la sorgente).
-await bot.api.setMyCommands(commandList("da", false));
+// Global list: no per-chat language is known in advance, so it's in English.
+await bot.api.setMyCommands([
+  { command: COMMANDS.today.primary, description: "Today's menu and upcoming days" },
+  { command: COMMANDS.week.primary, description: "Rest of the week in detail" },
+  { command: COMMANDS.evening.primary, description: "Evening buffet" },
+  { command: COMMANDS.language.primary, description: "Change language" },
+  { command: COMMANDS.status.primary, description: "Subscription status" },
+  { command: COMMANDS.stop.primary, description: "Unsubscribe from the daily menu" },
+]);
 
 if (ADMIN_USER_ID !== null) {
   await bot.api.setMyCommands(commandList(getLanguage(ADMIN_USER_ID), true), {
@@ -282,11 +315,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     stopSchedule();
     bot
       .stop()
-      .catch((err) => console.error("[shutdown] errore durante bot.stop():", err))
+      .catch((err) => console.error("[shutdown] error during bot.stop():", err))
       .finally(() => process.exit(0));
   });
 }
 
 const me = await bot.api.getMe();
-console.log(`Bot @${me.username} avviato (traduzione: ${provider}).`);
+console.log(`Bot @${me.username} started (translation provider: ${provider}).`);
 await bot.start();
