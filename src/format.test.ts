@@ -50,7 +50,7 @@ test("formatDay uses translation, allergen table, and Danish original", () => {
     "Oggi",
     "it",
   );
-  expect(out).toContain("<b>Oggi</b> — Lunedì 24 agosto");
+  expect(out).toContain("<b>Oggi</b> - Lunedì 24 agosto");
   expect(out).toContain("Salsa al vino rosso <i>(Rødvinssauce)</i>");
   expect(out).toContain("(+6 kr.)");
   expect(out).toContain("contiene: tracce di manzo, carne di cavallo");

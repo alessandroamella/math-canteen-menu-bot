@@ -7,10 +7,10 @@
  * quota is only spent on new content.
  *
  * Provider (env `TRANSLATE_PROVIDER`):
- *   google   — Cloud Translation v2, requires GOOGLE_TRANSLATE_API_KEY
- *   deepl    — requires DEEPL_API_KEY (":fx" suffix = free plan)
- *   mymemory — free, no key needed (default), higher quota with MYMEMORY_EMAIL
- *   none     — translation disabled, keeps the Danish text
+ *   google   - Cloud Translation v2, requires GOOGLE_TRANSLATE_API_KEY
+ *   deepl    - requires DEEPL_API_KEY (":fx" suffix = free plan)
+ *   mymemory - free, no key needed (default), higher quota with MYMEMORY_EMAIL
+ *   none     - translation disabled, keeps the Danish text
  */
 
 import { db } from "./db";
@@ -78,7 +78,7 @@ export function translationCacheStats(): Map<string, number> {
 
 function fail(res: Response, body: string): never {
   throw new Error(
-    `Translation failed (${provider}): ${res.status} ${res.statusText} — ${body.slice(0, 200)}`,
+    `Translation failed (${provider}): ${res.status} ${res.statusText} - ${body.slice(0, 200)}`,
   );
 }
 
@@ -184,7 +184,7 @@ function callProvider(texts: string[], target: string): Promise<string[]> {
  * `target::text`. Several chats/language groups can ask for the same dish
  * name at the same time (e.g. the daily broadcast fanning out); without this
  * they'd each fire their own provider request before any of them had a
- * chance to populate the SQLite cache — a thundering herd against the
+ * chance to populate the SQLite cache - a thundering herd against the
  * translation API. Callers arriving while a request is in flight just await
  * it instead.
  */

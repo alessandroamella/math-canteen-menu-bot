@@ -114,7 +114,7 @@ export function formatDay(
   const loc = locale(lang);
   const date = escapeHtml(localizeHeader(day.header, lang));
   const lines = [
-    heading ? `<b>${escapeHtml(heading)}</b> — ${date}` : `<b>${date}</b>`,
+    heading ? `<b>${escapeHtml(heading)}</b> - ${date}` : `<b>${date}</b>`,
   ];
 
   if (day.note) lines.push(`<i>${escapeHtml(localize(day.note, tr))}</i>`);
@@ -170,7 +170,7 @@ export function formatDaily(days: DayMenu[], tr: Translations, lang: Language = 
     blocks.push(`📅 <b>${loc.ui.upcomingDays}</b>\n\n${rest.join("\n\n")}`);
   }
 
-  return blocks.join("\n\n———\n\n");
+  return blocks.join("\n\n---\n\n");
 }
 
 /** Full week, with all the details. */
@@ -222,7 +222,7 @@ export function formatEvening(weeks: EveningMenu[], tr: Translations, lang: Lang
     return lines.join("\n");
   });
 
-  return `🌙 <b>${loc.ui.eveningTitle}</b>\n\n` + blocks.join("\n\n———\n\n");
+  return `🌙 <b>${loc.ui.eveningTitle}</b>\n\n` + blocks.join("\n\n---\n\n");
 }
 
 /** All the strings of a lunch menu that need to go through the translator. */

@@ -3,7 +3,7 @@
  *
  * Beyond the plain TTL, concurrent callers hitting a cache miss at the same
  * time share a single in-flight request instead of each firing their own
- * fetch — otherwise a burst of commands (or the daily broadcast overlapping
+ * fetch - otherwise a burst of commands (or the daily broadcast overlapping
  * a user command) would thunder-herd the upstream API.
  */
 
