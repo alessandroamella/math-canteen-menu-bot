@@ -8,6 +8,7 @@ import {
   textsToTranslate,
   textsToTranslateEvening,
 } from "./format";
+import { isLanguage, locale, type Language } from "./locale";
 import { provider, translateAll } from "./translate";
 
 /** Rende leggibile in terminale l'HTML che manderemmo a Telegram. */
@@ -19,17 +20,21 @@ function stripHtml(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
-const mode = process.argv[2] ?? "oggi";
+const args = process.argv.slice(2);
+const langArg = args.find(isLanguage);
+const lang: Language = langArg ?? "it";
+const mode = args.find((a) => !isLanguage(a)) ?? "oggi";
 
 let text: string;
 if (mode === "sera") {
   const weeks = await fetchEveningMenu();
-  text = formatEvening(weeks, await translateAll(textsToTranslateEvening(weeks)));
+  const tr = await translateAll(textsToTranslateEvening(weeks, lang), locale(lang).translateTo);
+  text = formatEvening(weeks, tr, lang);
 } else {
   const days = await fetchDayMenu();
-  const tr = await translateAll(textsToTranslate(days));
-  text = mode === "settimana" ? formatWeek(restOfWeek(days), tr) : formatDaily(days, tr);
+  const tr = await translateAll(textsToTranslate(days, lang), locale(lang).translateTo);
+  text = mode === "settimana" ? formatWeek(restOfWeek(days), tr, lang) : formatDaily(days, tr, lang);
 }
 
-console.error(`[traduzione: ${provider}]`);
+console.error(`[lingua: ${lang}, traduzione: ${provider}]`);
 console.log(stripHtml(text));

@@ -1,9 +1,10 @@
 /**
- * Traduzione danese → italiano, con cache persistente.
+ * Traduzione danese → lingua a scelta (italiano, ceco, slovacco), con cache
+ * persistente.
  *
  * I nomi dei piatti si ripetono molto tra un giorno e l'altro, quindi ogni
- * stringa viene tradotta una volta sola e poi riletta da SQLite: la quota
- * dell'API si consuma solo sulle novità.
+ * stringa viene tradotta una volta sola per lingua e poi riletta da SQLite:
+ * la quota dell'API si consuma solo sulle novità.
  *
  * Provider (env `TRANSLATE_PROVIDER`):
  *   google   — Cloud Translation v2, richiede GOOGLE_TRANSLATE_API_KEY
@@ -17,7 +18,6 @@ import { db } from "./db";
 export type Provider = "google" | "deepl" | "mymemory" | "none";
 
 const SOURCE = "da";
-const TARGET = "it";
 
 export const provider: Provider = (process.env.TRANSLATE_PROVIDER ??
   (process.env.GOOGLE_TRANSLATE_API_KEY
@@ -30,21 +30,51 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS translations (
     provider    TEXT NOT NULL,
     source      TEXT NOT NULL,
+    target      TEXT NOT NULL,
     translated  TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    PRIMARY KEY (provider, source)
+    PRIMARY KEY (provider, source, target)
   );
 `);
 
-const readCache = db.query<{ translated: string }, [string, string]>(
-  "SELECT translated FROM translations WHERE provider = ? AND source = ?",
+// Migrazione: le versioni precedenti traducevano solo verso l'italiano e non
+// avevano la colonna `target`. È solo una cache, quindi la ricreiamo da zero.
+const hasTargetColumn = db
+  .query<{ name: string }, []>("PRAGMA table_info(translations)")
+  .all()
+  .some((c) => c.name === "target");
+if (!hasTargetColumn) {
+  db.exec("DROP TABLE translations;");
+  db.exec(`
+    CREATE TABLE translations (
+      provider    TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      target      TEXT NOT NULL,
+      translated  TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (provider, source, target)
+    );
+  `);
+}
+
+const readCache = db.query<{ translated: string }, [string, string, string]>(
+  "SELECT translated FROM translations WHERE provider = ? AND source = ? AND target = ?",
 );
-const writeCache = db.query<unknown, [string, string, string]>(
-  "INSERT OR REPLACE INTO translations (provider, source, translated) VALUES (?, ?, ?)",
+const writeCache = db.query<unknown, [string, string, string, string]>(
+  "INSERT OR REPLACE INTO translations (provider, source, target, translated) VALUES (?, ?, ?, ?)",
 );
 
 /** Mappa testo originale → traduzione. I testi non tradotti non compaiono. */
 export type Translations = Map<string, string>;
+
+const cacheCountByTarget = db.query<{ target: string; n: number }, []>(
+  "SELECT target, COUNT(*) AS n FROM translations GROUP BY target",
+);
+
+/** Numero di stringhe in cache per lingua target, per il dump admin. */
+export function translationCacheStats(): Map<string, number> {
+  return new Map(cacheCountByTarget.all().map((r) => [r.target, r.n]));
+}
 
 function fail(res: Response, body: string): never {
   throw new Error(
@@ -53,7 +83,7 @@ function fail(res: Response, body: string): never {
 }
 
 /** Cloud Translation v2: accetta l'intero batch in una richiesta. */
-async function translateGoogle(texts: string[]): Promise<string[]> {
+async function translateGoogle(texts: string[], target: string): Promise<string[]> {
   const key = process.env.GOOGLE_TRANSLATE_API_KEY;
   if (!key) throw new Error("Manca GOOGLE_TRANSLATE_API_KEY.");
 
@@ -65,7 +95,7 @@ async function translateGoogle(texts: string[]): Promise<string[]> {
       body: JSON.stringify({
         q: texts,
         source: SOURCE,
-        target: TARGET,
+        target,
         format: "text",
       }),
       signal: AbortSignal.timeout(20_000),
@@ -80,7 +110,7 @@ async function translateGoogle(texts: string[]): Promise<string[]> {
 }
 
 /** DeepL: anche qui il batch sta in una sola richiesta. */
-async function translateDeepl(texts: string[]): Promise<string[]> {
+async function translateDeepl(texts: string[], target: string): Promise<string[]> {
   const key = process.env.DEEPL_API_KEY;
   if (!key) throw new Error("Manca DEEPL_API_KEY.");
   // Le chiavi del piano free finiscono con ":fx" e usano un host diverso.
@@ -95,7 +125,7 @@ async function translateDeepl(texts: string[]): Promise<string[]> {
     body: JSON.stringify({
       text: texts,
       source_lang: "DA",
-      target_lang: "IT",
+      target_lang: target.toUpperCase(),
     }),
     signal: AbortSignal.timeout(20_000),
   });
@@ -106,12 +136,12 @@ async function translateDeepl(texts: string[]): Promise<string[]> {
 }
 
 /** MyMemory: una stringa per richiesta, quindi le mandiamo in sequenza. */
-async function translateMyMemory(texts: string[]): Promise<string[]> {
+async function translateMyMemory(texts: string[], target: string): Promise<string[]> {
   const out: string[] = [];
   for (const text of texts) {
     const url = new URL("https://api.mymemory.translated.net/get");
     url.searchParams.set("q", text);
-    url.searchParams.set("langpair", `${SOURCE}|${TARGET}`);
+    url.searchParams.set("langpair", `${SOURCE}|${target}`);
     // Dichiarare un'email alza la quota anonima da 5k a 50k caratteri/giorno.
     if (process.env.MYMEMORY_EMAIL) {
       url.searchParams.set("de", process.env.MYMEMORY_EMAIL);
@@ -136,45 +166,50 @@ async function translateMyMemory(texts: string[]): Promise<string[]> {
   return out;
 }
 
-function callProvider(texts: string[]): Promise<string[]> {
+function callProvider(texts: string[], target: string): Promise<string[]> {
   switch (provider) {
     case "google":
-      return translateGoogle(texts);
+      return translateGoogle(texts, target);
     case "deepl":
-      return translateDeepl(texts);
+      return translateDeepl(texts, target);
     case "mymemory":
-      return translateMyMemory(texts);
+      return translateMyMemory(texts, target);
     case "none":
       return Promise.resolve(texts);
   }
 }
 
 /**
- * Traduce un insieme di stringhe, usando la cache dove possibile.
+ * Traduce un insieme di stringhe verso `target`, usando la cache dove possibile.
+ * Se `target` è null (danese, la lingua sorgente) restituisce subito una mappa
+ * vuota: non c'è nulla da tradurre.
  * Se l'API fallisce non solleva: restituisce solo ciò che era già in cache,
  * così un contrattempo di rete degrada al danese invece di far saltare il menù.
  */
-export async function translateAll(texts: Iterable<string>): Promise<Translations> {
+export async function translateAll(
+  texts: Iterable<string>,
+  target: string | null,
+): Promise<Translations> {
   const result: Translations = new Map();
-  if (provider === "none") return result;
+  if (provider === "none" || !target) return result;
 
   const missing: string[] = [];
   for (const raw of texts) {
     const text = raw.trim();
     if (!text || result.has(text)) continue;
-    const hit = readCache.get(provider, text);
+    const hit = readCache.get(provider, text, target);
     if (hit) result.set(text, hit.translated);
     else if (!missing.includes(text)) missing.push(text);
   }
   if (missing.length === 0) return result;
 
   try {
-    const translated = await callProvider(missing);
+    const translated = await callProvider(missing, target);
     db.transaction(() => {
       missing.forEach((source, i) => {
         const value = translated[i];
         if (!value) return;
-        writeCache.run(provider, source, value);
+        writeCache.run(provider, source, target, value);
         result.set(source, value);
       });
     })();
