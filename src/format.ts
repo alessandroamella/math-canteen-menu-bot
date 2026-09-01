@@ -144,7 +144,7 @@ export function formatDay(
 /** Messaggio giornaliero: oggi in evidenza + anteprima del resto della settimana. */
 export function formatDaily(days: DayMenu[], tr: Translations, lang: Language = "it"): string {
   const loc = locale(lang);
-  if (days.length === 0) return "Nessun dato disponibile da matkant.dk.";
+  if (days.length === 0) return loc.ui.noDataAvailable;
 
   const [today, ...upcoming] = days as [DayMenu, ...DayMenu[]];
   const blocks = [
@@ -177,7 +177,7 @@ export function formatDaily(days: DayMenu[], tr: Translations, lang: Language = 
 /** Settimana intera, con tutti i dettagli. */
 export function formatWeek(days: DayMenu[], tr: Translations, lang: Language = "it"): string {
   const loc = locale(lang);
-  if (days.length === 0) return "Nessun dato disponibile da matkant.dk.";
+  if (days.length === 0) return loc.ui.noDataAvailable;
   return (
     `🍽 <b>${loc.ui.weekTitle}</b>\n\n` +
     days.map((d) => formatDay(d, tr, undefined, lang)).join("\n\n")
@@ -187,7 +187,7 @@ export function formatWeek(days: DayMenu[], tr: Translations, lang: Language = "
 /** Menù/apertura serale (una o più settimane). */
 export function formatEvening(weeks: EveningMenu[], tr: Translations, lang: Language = "it"): string {
   const loc = locale(lang);
-  if (weeks.length === 0) return "Nessun dato disponibile da matkant.dk.";
+  if (weeks.length === 0) return loc.ui.noDataAvailable;
 
   const blocks = weeks.map((week) => {
     const lines = [

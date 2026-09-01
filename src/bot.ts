@@ -70,16 +70,19 @@ function languageKeyboard(): InlineKeyboard {
   return kb;
 }
 
-/** Testo dei comandi disponibili, con la riga admin se l'utente lo è. */
-function helpText(userId: number | undefined): string {
+const HHMM = `${String(SEND_HOUR).padStart(2, "0")}:${String(SEND_MINUTE).padStart(2, "0")}`;
+
+/** Testo dei comandi disponibili, nella lingua della chat, con la riga admin se l'utente lo è. */
+function helpText(lang: Language, userId: number | undefined): string {
+  const ui = locale(lang).ui;
   return (
-    `Invio giornaliero alle ${String(SEND_HOUR).padStart(2, "0")}:${String(SEND_MINUTE).padStart(2, "0")} (${TZ}).\n\n` +
-    "/oggi — menù di oggi e prossimi giorni\n" +
-    "/settimana — resto della settimana in dettaglio\n" +
-    "/sera — buffet serale\n" +
-    "/language — cambia lingua\n" +
-    "/stop — disiscriviti" +
-    (isAdmin(userId) ? "\n/admin — 🔐 dati salvati (solo admin)" : "")
+    `${ui.dailyAt(HHMM, TZ)}\n\n` +
+    `/oggi — ${ui.cmdTodayDesc}\n` +
+    `/settimana — ${ui.cmdWeekDesc}\n` +
+    `/sera — ${ui.cmdEveningDesc}\n` +
+    `/language — ${ui.cmdLanguageDesc}\n` +
+    `/stop — ${ui.cmdStopDesc}` +
+    (isAdmin(userId) ? `\n/admin — ${ui.cmdAdminDesc}` : "")
   );
 }
 
@@ -99,7 +102,8 @@ bot.command("start", async ctx => {
     return;
   }
 
-  await ctx.reply("Sei già iscritto.\n\n" + helpText(ctx.from?.id), send);
+  const lang = getLanguage(ctx.chat.id);
+  await ctx.reply(`${locale(lang).ui.alreadySubscribed}\n\n${helpText(lang, ctx.from?.id)}`, send);
 });
 
 bot.callbackQuery(/^lang:(.+)$/, async ctx => {
@@ -114,10 +118,8 @@ bot.callbackQuery(/^lang:(.+)$/, async ctx => {
   await ctx.editMessageText(`✅ ${LANGUAGE_NAMES[chosen]}`);
 
   await ctx.reply(
-    (wasSubscribed
-      ? ""
-      : "✅ Iscritto! Ogni giorno ti mando il menù della Matematisk Kantine.\n\n") +
-      helpText(ctx.from?.id),
+    (wasSubscribed ? "" : `${locale(chosen).ui.subscribedIntro}\n\n`) +
+      helpText(chosen, ctx.from?.id),
     send
   );
 
@@ -134,12 +136,9 @@ bot.command("language", async ctx => {
 });
 
 bot.command("stop", async ctx => {
+  const ui = locale(getLanguage(ctx.chat.id)).ui;
   const removed = unsubscribe(ctx.chat.id);
-  await ctx.reply(
-    removed
-      ? "👋 Disiscritto. Puoi sempre riattivare con /start."
-      : "Non eri iscritto. Usa /start per iscriverti."
-  );
+  await ctx.reply(removed ? ui.stopSuccess : ui.stopNotSubscribed);
 });
 
 bot.command(["oggi", "today", "menu"], async ctx => {
@@ -166,18 +165,20 @@ bot.command(["sera", "evening", "aften"], async ctx => {
 
 bot.command("status", async ctx => {
   const lang = getLanguage(ctx.chat.id);
+  const ui = locale(lang).ui;
   await ctx.reply(
-    `Iscrizione a questa chat: ${isSubscribed(ctx.chat.id) ? "attiva" : "non attiva"}\n` +
-      `Lingua: ${LANGUAGE_NAMES[lang]}\n` +
-      `Iscritti totali: ${listSubscribers().length}\n` +
-      `Invio: ${String(SEND_HOUR).padStart(2, "0")}:${String(SEND_MINUTE).padStart(2, "0")} ${TZ}` +
-      (SKIP_WEEKEND ? " (weekend saltato)" : "")
+    `${ui.statusSubscriptionLabel}: ${isSubscribed(ctx.chat.id) ? ui.statusActive : ui.statusInactive}\n` +
+      `${ui.statusLanguageLabel}: ${LANGUAGE_NAMES[lang]}\n` +
+      `${ui.statusTotalLabel}: ${listSubscribers().length}\n` +
+      `${ui.statusSendLabel}: ${HHMM} ${TZ}` +
+      (SKIP_WEEKEND ? ui.statusWeekendSkipped : "")
   );
 });
 
 bot.command("admin", async ctx => {
+  const ui = locale(getLanguage(ctx.chat.id)).ui;
   if (!isAdmin(ctx.from?.id)) {
-    await ctx.reply("⛔ Comando riservato all'admin.");
+    await ctx.reply(ui.adminDenied);
     return;
   }
 
@@ -188,19 +189,19 @@ bot.command("admin", async ctx => {
   for (const s of subs) bylang.set(s.language, (bylang.get(s.language) ?? 0) + 1);
 
   const lines = [
-    `🔐 <b>Dati salvati</b> (${provider})\n`,
-    `<b>Iscritti totali:</b> ${subs.length}`,
+    `${ui.adminHeader} (${provider})\n`,
+    `<b>${ui.adminTotalSubs}</b> ${subs.length}`,
     ...[...bylang].map(([lang, n]) => `  • ${LANGUAGE_NAMES[lang as Language] ?? lang}: ${n}`),
     "",
-    "<b>Iscritti (chat_id — lingua — dal):</b>",
+    `<b>${ui.adminSubsListLabel}</b>`,
     ...(subs.length > 0
       ? subs.map((s) => `<code>${s.chatId}</code> — ${s.language} — ${s.createdAt}`)
-      : ["  (nessuno)"]),
+      : [`  ${ui.adminNone}`]),
     "",
-    "<b>Cache traduzioni per lingua:</b>",
+    `<b>${ui.adminCacheHeader}</b>`,
     ...(cacheStats.size > 0
-      ? [...cacheStats].map(([lang, n]) => `  • ${lang}: ${n} stringhe`)
-      : ["  (vuota)"]),
+      ? [...cacheStats].map(([lang, n]) => `  • ${lang}: ${n} ${ui.adminCacheEntrySuffix}`)
+      : [`  ${ui.adminCacheEmpty}`]),
   ];
 
   await ctx.reply(lines.join("\n"), send);
@@ -246,28 +247,27 @@ export async function broadcastDaily(): Promise<void> {
   console.log(`[broadcast] inviato a ${sent}/${total} chat.`);
 }
 
-await bot.api.setMyCommands([
-  { command: "oggi", description: "Menù di oggi e prossimi giorni" },
-  { command: "settimana", description: "Resto della settimana in dettaglio" },
-  { command: "sera", description: "Buffet serale" },
-  { command: "language", description: "Cambia lingua / Change language" },
-  { command: "status", description: "Stato dell'iscrizione" },
-  { command: "stop", description: "Disiscriviti dall'invio giornaliero" }
-]);
+function commandList(lang: Language, admin: boolean): { command: string; description: string }[] {
+  const ui = locale(lang).ui;
+  const list = [
+    { command: "oggi", description: ui.cmdTodayDesc },
+    { command: "settimana", description: ui.cmdWeekDesc },
+    { command: "sera", description: ui.cmdEveningDesc },
+    { command: "language", description: ui.cmdLanguageDesc },
+    { command: "status", description: ui.statusSubscriptionLabel },
+  ];
+  if (admin) list.push({ command: "admin", description: ui.cmdAdminDesc });
+  list.push({ command: "stop", description: ui.cmdStopDesc });
+  return list;
+}
+
+// Lista globale: nessuna lingua è nota in anticipo, quindi resta in danese (la sorgente).
+await bot.api.setMyCommands(commandList("da", false));
 
 if (ADMIN_USER_ID !== null) {
-  await bot.api.setMyCommands(
-    [
-      { command: "oggi", description: "Menù di oggi e prossimi giorni" },
-      { command: "settimana", description: "Resto della settimana in dettaglio" },
-      { command: "sera", description: "Buffet serale" },
-      { command: "language", description: "Cambia lingua / Change language" },
-      { command: "status", description: "Stato dell'iscrizione" },
-      { command: "admin", description: "🔐 Dati salvati (solo admin)" },
-      { command: "stop", description: "Disiscriviti dall'invio giornaliero" }
-    ],
-    { scope: { type: "chat", chat_id: ADMIN_USER_ID } }
-  );
+  await bot.api.setMyCommands(commandList(getLanguage(ADMIN_USER_ID), true), {
+    scope: { type: "chat", chat_id: ADMIN_USER_ID },
+  });
 }
 
 const stopSchedule = scheduleDaily(SEND_HOUR, SEND_MINUTE, TZ, broadcastDaily);
