@@ -168,8 +168,13 @@ async function translateOpenAI(texts: string[], target: string): Promise<string[
     `other text before or after them.\n\n${texts.join("\n")}`;
 
   const response = await getOpenAiClient().responses.create({ model, input: prompt });
+  if (!response.output_text) {
+    throw new Error(`OpenAI returned no output text (status: ${response.status ?? "unknown"}).`);
+  }
 
   const lines = response.output_text.split("\n").map((l) => l.trim());
+  // Models sometimes add one trailing blank line; drop it before checking alignment.
+  if (lines.length === texts.length + 1 && lines[lines.length - 1] === "") lines.pop();
   if (lines.length !== texts.length) {
     throw new Error(
       `OpenAI returned ${lines.length} lines for ${texts.length} inputs (translation dropped out of sync).`,
@@ -274,7 +279,7 @@ export async function translateAll(
   if (toFetch.length > 0) {
     const batch = (async (): Promise<(string | undefined)[]> => {
       try {
-        const translated = await callProvider(toFetch, target);
+        const translated = (await callProvider(toFetch, target)) ?? [];
         db.transaction(() => {
           toFetch.forEach((source, i) => {
             const value = translated[i];
