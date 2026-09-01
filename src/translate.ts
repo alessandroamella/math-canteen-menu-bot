@@ -180,6 +180,17 @@ function callProvider(texts: string[], target: string): Promise<string[]> {
 }
 
 /**
+ * Requests already out for a given (target, text) pair, keyed by
+ * `target::text`. Several chats/language groups can ask for the same dish
+ * name at the same time (e.g. the daily broadcast fanning out); without this
+ * they'd each fire their own provider request before any of them had a
+ * chance to populate the SQLite cache — a thundering herd against the
+ * translation API. Callers arriving while a request is in flight just await
+ * it instead.
+ */
+const inFlight = new Map<string, Promise<string | undefined>>();
+
+/**
  * Translates a set of strings towards `target`, using the cache where
  * possible. If `target` is null (Danish, the source language) it returns an
  * empty map right away: there's nothing to translate.
@@ -193,28 +204,60 @@ export async function translateAll(
   const result: Translations = new Map();
   if (provider === "none" || !target) return result;
 
-  const missing: string[] = [];
+  const toFetch: string[] = [];
+  const pending: { text: string; promise: Promise<string | undefined> }[] = [];
+
   for (const raw of texts) {
     const text = raw.trim();
-    if (!text || result.has(text)) continue;
-    const hit = readCache.get(provider, text, target);
-    if (hit) result.set(text, hit.translated);
-    else if (!missing.includes(text)) missing.push(text);
-  }
-  if (missing.length === 0) return result;
+    if (!text || result.has(text) || pending.some((p) => p.text === text)) continue;
 
-  try {
-    const translated = await callProvider(missing, target);
-    db.transaction(() => {
-      missing.forEach((source, i) => {
-        const value = translated[i];
-        if (!value) return;
-        writeCache.run(provider, source, target, value);
-        result.set(source, value);
-      });
-    })();
-  } catch (err) {
-    console.error("[translate] translation skipped, staying in Danish:", err);
+    const hit = readCache.get(provider, text, target);
+    if (hit) {
+      result.set(text, hit.translated);
+      continue;
+    }
+
+    const key = `${target}::${text}`;
+    const existing = inFlight.get(key);
+    if (existing) {
+      pending.push({ text, promise: existing });
+    } else if (!toFetch.includes(text)) {
+      toFetch.push(text);
+    }
   }
+
+  if (toFetch.length > 0) {
+    const batch = (async (): Promise<(string | undefined)[]> => {
+      try {
+        const translated = await callProvider(toFetch, target);
+        db.transaction(() => {
+          toFetch.forEach((source, i) => {
+            const value = translated[i];
+            if (value) writeCache.run(provider, source, target, value);
+          });
+        })();
+        return translated;
+      } catch (err) {
+        console.error("[translate] translation skipped, staying in Danish:", err);
+        return [];
+      }
+    })();
+
+    toFetch.forEach((text, i) => {
+      const key = `${target}::${text}`;
+      const promise = batch.then((translated) => translated[i]);
+      inFlight.set(key, promise);
+      promise.finally(() => {
+        if (inFlight.get(key) === promise) inFlight.delete(key);
+      });
+      pending.push({ text, promise });
+    });
+  }
+
+  for (const { text, promise } of pending) {
+    const value = await promise;
+    if (value) result.set(text, value);
+  }
+
   return result;
 }

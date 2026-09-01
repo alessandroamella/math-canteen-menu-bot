@@ -18,7 +18,8 @@ import {
   textsToTranslateEvening,
 } from "./format";
 import { LANGUAGE_NAMES, LANGUAGES, isLanguage, locale, type Language } from "./locale";
-import { type DayMenu, fetchDayMenu, fetchEveningMenu, restOfWeek } from "./matkant";
+import { restOfWeek, type DayMenu } from "./matkant";
+import { getDayMenu, getEveningMenu } from "./menu-cache";
 import { scheduleDaily } from "./schedule";
 import { provider, translateAll, translationCacheStats, type Translations } from "./translate";
 
@@ -71,20 +72,9 @@ function allNames(cmd: CommandDef): string[] {
   return [cmd.primary, ...cmd.aliases];
 }
 
-/** Very short-lived cache: avoids hammering the API with several close-together commands. */
-let cache: { at: number; days: DayMenu[] } | null = null;
-const CACHE_MS = 5 * 60_000;
-
-async function getDays(): Promise<DayMenu[]> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.days;
-  const days = await fetchDayMenu();
-  cache = { at: Date.now(), days };
-  return days;
-}
-
 /** Lunch menu already paired with its translations towards `lang`. */
 async function getDaysTranslated(lang: Language): Promise<[DayMenu[], Translations]> {
-  const days = await getDays();
+  const days = await getDayMenu();
   return [days, await translateAll(textsToTranslate(days, lang), locale(lang).translateTo)];
 }
 
@@ -184,7 +174,7 @@ bot.command(allNames(COMMANDS.week), async ctx => {
 bot.command(allNames(COMMANDS.evening), async ctx => {
   await ctx.replyWithChatAction("typing");
   const lang = getLanguage(ctx.chat.id);
-  const weeks = await fetchEveningMenu();
+  const weeks = await getEveningMenu();
   const tr = await translateAll(textsToTranslateEvening(weeks, lang), locale(lang).translateTo);
   await ctx.reply(formatEvening(weeks, tr, lang), send);
 });
@@ -238,8 +228,7 @@ export async function broadcastDaily(): Promise<void> {
   const byLanguage = listSubscribersByLanguage();
   if (byLanguage.size === 0) return;
 
-  const days = await fetchDayMenu();
-  cache = { at: Date.now(), days };
+  const days = await getDayMenu();
   const today = days[0];
 
   if (SKIP_WEEKEND && today && !today.open && !today.has_menu) {

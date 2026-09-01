@@ -96,6 +96,7 @@ bun test
 ## Struttura
 
 - `src/matkant.ts` — client dell'API, tipi, ritaglio della settimana
+- `src/menu-cache.ts` — cache + deduplica delle richieste concorrenti al menù (evita il thundering herd sull'API di matkant.dk)
 - `src/locale.ts` — lingue supportate e tabelle di localizzazione (giorni, mesi, allergeni, UI)
 - `src/translate.ts` — traduzione da → lingua scelta multi-provider, con cache per lingua
 - `src/format.ts` — messaggi HTML per Telegram, localizzati per lingua
