@@ -25,9 +25,11 @@ Bun carica `.env` da solo.
 | `SKIP_WEEKEND` | `true` | Salta l'invio quando la mensa è chiusa |
 | `DB_PATH` | `matkant.sqlite` | File SQLite con iscritti (e relativa lingua) e cache traduzioni |
 | `ADMIN_USER_ID` | — | ID utente Telegram dell'admin: sblocca `/admin` (dati salvati) |
-| `TRANSLATE_PROVIDER` | `mymemory` | `google`, `deepl`, `mymemory` o `none` |
+| `TRANSLATE_PROVIDER` | `mymemory` | `google`, `deepl`, `openai`, `mymemory` o `none` |
 | `GOOGLE_TRANSLATE_API_KEY` | — | Chiave Cloud Translation v2 |
 | `DEEPL_API_KEY` | — | Chiave DeepL (`:fx` = piano free) |
+| `OPENAI_API_KEY` | — | Chiave OpenAI (usa la Responses API) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Modello OpenAI usato per tradurre |
 | `MYMEMORY_EMAIL` | — | Alza la quota MyMemory da 5k a 50k caratteri/giorno |
 | `SHOW_ORIGINAL` | `true` | Mostra il nome danese accanto alla traduzione |
 
@@ -46,8 +48,11 @@ e allergeni comuni usano invece tabelle locali per lingua (`src/locale.ts`),
 che sono deterministiche e non consumano quota. Scegliendo il danese non viene
 fatta alcuna chiamata di traduzione: il menù resta così com'è.
 
-Se `TRANSLATE_PROVIDER` non è impostato si sceglie `google` o `deepl` quando c'è
-la chiave corrispondente, altrimenti `mymemory`, che funziona senza registrarsi.
+Se `TRANSLATE_PROVIDER` non è impostato si sceglie `google`, `deepl` o `openai`
+(in quest'ordine) quando c'è la chiave corrispondente, altrimenti `mymemory`,
+che funziona senza registrarsi. Con `openai` la traduzione passa per la
+Responses API: un prompt spiega che si tratta di un menù di una mensa danese
+e chiede solo la traduzione riga per riga, senza altro testo.
 Ogni stringa è tradotta una volta sola per lingua e poi riletta dalla cache
 SQLite, quindi la quota si consuma solo sui piatti nuovi. L'invio giornaliero
 raggruppa gli iscritti per lingua e traduce una volta sola per gruppo, non per

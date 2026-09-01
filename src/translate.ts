@@ -9,13 +9,15 @@
  * Provider (env `TRANSLATE_PROVIDER`):
  *   google   - Cloud Translation v2, requires GOOGLE_TRANSLATE_API_KEY
  *   deepl    - requires DEEPL_API_KEY (":fx" suffix = free plan)
+ *   openai   - Responses API, requires OPENAI_API_KEY (model via OPENAI_MODEL)
  *   mymemory - free, no key needed (default), higher quota with MYMEMORY_EMAIL
  *   none     - translation disabled, keeps the Danish text
  */
 
+import OpenAI from "openai";
 import { db } from "./db";
 
-export type Provider = "google" | "deepl" | "mymemory" | "none";
+export type Provider = "google" | "deepl" | "openai" | "mymemory" | "none";
 
 const SOURCE = "da";
 
@@ -24,7 +26,9 @@ export const provider: Provider = (process.env.TRANSLATE_PROVIDER ??
     ? "google"
     : process.env.DEEPL_API_KEY
       ? "deepl"
-      : "mymemory")) as Provider;
+      : process.env.OPENAI_API_KEY
+        ? "openai"
+        : "mymemory")) as Provider;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS translations (
@@ -135,6 +139,45 @@ async function translateDeepl(texts: string[], target: string): Promise<string[]
   return json.translations.map((t) => t.text);
 }
 
+const TARGET_LANGUAGE_NAMES: Record<string, string> = {
+  it: "Italian",
+  cs: "Czech",
+  sk: "Slovak",
+  da: "Danish",
+};
+
+let openaiClient: OpenAI | null = null;
+function getOpenAiClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("Missing OPENAI_API_KEY.");
+  openaiClient ??= new OpenAI({ apiKey });
+  return openaiClient;
+}
+
+/** OpenAI Responses API: one prompt asks for the whole batch, one line per dish, in order. */
+async function translateOpenAI(texts: string[], target: string): Promise<string[]> {
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  const targetName = TARGET_LANGUAGE_NAMES[target] ?? target;
+
+  const prompt =
+    `You translate menu items for a Danish workplace canteen from Danish to ${targetName}. ` +
+    `Each line below is a separate dish name or allergen/ingredient list — short food-related ` +
+    `phrases, not full sentences. Translate each line on its own, keeping the exact same order ` +
+    `and the exact same number of lines as the input. ` +
+    `Output ONLY the translated lines, one per line, with no numbering, quotes, labels, or any ` +
+    `other text before or after them.\n\n${texts.join("\n")}`;
+
+  const response = await getOpenAiClient().responses.create({ model, input: prompt });
+
+  const lines = response.output_text.split("\n").map((l) => l.trim());
+  if (lines.length !== texts.length) {
+    throw new Error(
+      `OpenAI returned ${lines.length} lines for ${texts.length} inputs (translation dropped out of sync).`,
+    );
+  }
+  return lines;
+}
+
 /** MyMemory: one string per request, so they're sent sequentially. */
 async function translateMyMemory(texts: string[], target: string): Promise<string[]> {
   const out: string[] = [];
@@ -172,6 +215,8 @@ function callProvider(texts: string[], target: string): Promise<string[]> {
       return translateGoogle(texts, target);
     case "deepl":
       return translateDeepl(texts, target);
+    case "openai":
+      return translateOpenAI(texts, target);
     case "mymemory":
       return translateMyMemory(texts, target);
     case "none":
